@@ -12,7 +12,8 @@
 
 int main()
 {
-	const char* path = "G:\\work\\projects\\sarc\\test_data\\test01.sarc";
+	//const char* path = "G:\\work\\projects\\sarc\\test_data\\test01.sarc";
+	const char* path = "G:\\work\\projects\\sarc\\SimpleArchive\\bin\\Debug\\test.arc";
 
 	std::unique_ptr<std::uint8_t[]> buffer;
 	std::uint32_t file_size = 0;
@@ -37,6 +38,11 @@ int main()
 
 	sarc::Archive arc(buffer.get(), file_size);
 	arc.get_file(0);
+
+	for (sarc::FileAccessor file : arc)
+	{
+		printf("%s : %lu\n", file.file_name(), file.file_size());
+	}
 
 	// 比較演算子のテスト
 	{

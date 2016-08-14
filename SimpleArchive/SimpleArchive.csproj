@@ -46,9 +46,11 @@
     <Compile Include="Archive.cs" />
     <Compile Include="ArchiveEntry.cs" />
     <Compile Include="CorruptedArchiveException.cs" />
+    <Compile Include="Misc.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Reader.cs" />
+    <Compile Include="WrappedStream.cs" />
     <Compile Include="Writer.cs" />
   </ItemGroup>
   <ItemGroup>

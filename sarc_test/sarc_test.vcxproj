@@ -146,9 +146,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="..\sarc\include\sarc\archive.hpp" />
     <ClInclude Include="..\sarc\include\sarc\file_accessor.hpp" />
     <ClInclude Include="stdafx.h" />

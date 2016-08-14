@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.IO;
 
 namespace SimpleArchive
 {
@@ -54,9 +55,11 @@ namespace SimpleArchive
             //     指定しなかった場合はソートされない。
             //     /Sort は単体のコマンドとしても利用できる。
 
-            using (Archive arc = new Archive("test.arc"))
+            using (Stream stream = new FileStream("test.arc", FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+            using (Archive arc = new Archive(stream, ArchiveMode.Update))
             {
-                ArchiveEntry entry = arc.CreateEntry("test2");
+                //arc.CreateEntry("test1");
+                //arc.CreateEntry("test2");
             }
         }
     }

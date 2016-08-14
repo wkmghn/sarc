@@ -82,7 +82,9 @@ FileAccessor Archive::get_file(std::uint32_t file_index) const
 	const std::uint8_t* file_body = data_ + file_body_offset;
 
 	const std::uint32_t file_size = read_uint32(file_head + 4);
-	const char* file_name = reinterpret_cast<const char*>(file_head + 8);
+	// 今のところランタイム側では参照しない
+	//std::uint32_t alignment = read_uint32(file_head + 8);
+	const char* file_name = reinterpret_cast<const char*>(file_head + 12);
 
 	return FileAccessor(file_body, file_name, file_size);
 }
