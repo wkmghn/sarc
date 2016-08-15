@@ -14,6 +14,7 @@ namespace SimpleArchive
         {
             get
             {
+                // 常に true であることを想定している。
                 return m_baseStream.CanRead;
             }
         }
@@ -22,7 +23,7 @@ namespace SimpleArchive
         {
             get
             {
-                return m_baseStream.CanWrite;
+                return m_baseStream.CanWrite && m_canWrite;
             }
         }
 
@@ -56,7 +57,7 @@ namespace SimpleArchive
             }
         }
 
-        public WrappedStream(Stream baseStream)
+        public WrappedStream(Stream baseStream, bool readOnly, Action onClosedCallback)
         {
             if (baseStream == null)
             {
@@ -69,7 +70,9 @@ namespace SimpleArchive
             }
 
             m_baseStream = baseStream;
-            m_closeBaseStream = false;
+            m_closeBaseStream = false;  // たぶん true に設定する需要が無い。
+            m_canWrite = !readOnly;
+            m_onClosed = onClosedCallback;
         }
 
         public override int Read(byte[] buffer, int offset, int count)
@@ -109,6 +112,12 @@ namespace SimpleArchive
                     }
                 }
                 m_baseStream = null;
+
+                if (m_onClosed != null)
+                {
+                    m_onClosed.Invoke();
+                }
+
                 m_isDisposed = true;
             }
 
@@ -116,7 +125,9 @@ namespace SimpleArchive
         }
 
         private Stream m_baseStream;
-        private bool m_closeBaseStream;
+        private bool m_closeBaseStream;  // Dispose の際にベースストリームを閉じるか？
+        private bool m_canWrite;
+        private Action m_onClosed;
         private bool m_isDisposed = false;
     }
 }

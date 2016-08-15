@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.IO;
 using System.Diagnostics;
 
@@ -46,7 +45,14 @@ namespace SimpleArchive
         private const UInt32 MINIMUM_FILE_SIZE = FILE_HEADER_SIZE;
         private const UInt32 CURRENT_VERSION = 1;
 
-        public IReadOnlyCollection<ArchiveEntry> Entries { get { return m_entries; } }
+        public IReadOnlyCollection<ArchiveEntry> Entries
+        {
+            get
+            {
+                if (m_isDisposed) { throw new ObjectDisposedException("Archive"); }
+                return m_entries;
+            }
+        }
 
         /// <summary>
         /// アーカイブのモードを取得します。
@@ -67,6 +73,7 @@ namespace SimpleArchive
         /// </summary>
         /// <param name="stream">
         /// 読み取るアーカイブを格納しているストリーム。
+        /// ストリームは少なくともシークと読み取りをサポートしている必要があります。
         /// 指定されたストリームは Archive が破棄される際に閉じられます。
         /// </param>
         public Archive(Stream stream)
@@ -79,6 +86,7 @@ namespace SimpleArchive
         /// </summary>
         /// <param name="stream">
         /// 読み取るアーカイブを格納しているストリームもしくは新規作成されたアーカイブを出力するストリーム。
+        /// ストリームは少なくともシークと読み取りをサポートしている必要があります。
         /// 指定されたストリームは Archive が破棄される際に閉じられます。
         /// </param>
         /// <param name="mode">
@@ -94,6 +102,7 @@ namespace SimpleArchive
         /// </summary>
         /// <param name="stream">
         /// 読み取るアーカイブを格納しているストリームもしくは新規作成されたアーカイブを出力するストリーム。
+        /// ストリームは少なくともシークと読み取りをサポートしている必要があります。
         /// </param>
         /// <param name="mode">
         /// アーカイブの使用方法を示す列挙値。
@@ -146,7 +155,7 @@ namespace SimpleArchive
                 {
                     if (m_stream.Length < MINIMUM_FILE_SIZE)
                     {
-                        throw new InvalidDataException("ストリームの長さが短すぎます。");
+                        throw new CorruptedArchiveException("ストリームの長さが短すぎます。");
                     }
 
                     using (Reader reader = new Reader(m_stream, true))
@@ -155,14 +164,14 @@ namespace SimpleArchive
                         byte[] magicNumber = reader.ReadBytes(0, 4);
                         if (!magicNumber.SequenceEqual(MAGIC_NUMBER))
                         {
-                            throw new InvalidDataException("マジックナンバーが不正です。");
+                            throw new CorruptedArchiveException("アーカイブのマジックナンバーが不正です。");
                         }
 
                         // バージョンをチェック
                         UInt32 version = reader.ReadUInt32(4);
                         if (version != CURRENT_VERSION)
                         {
-                            throw new InvalidDataException("バージョンが不正です。");
+                            throw new CorruptedArchiveException("アーカイブのバージョンが不正です。");
                         }
 
                         // アーカイブ内のファイル数を取得
@@ -188,66 +197,105 @@ namespace SimpleArchive
                 {
                     throw new ArgumentException("ストリームが空ではありません。", "stream");
                 }
+            }
+        }
 
-                // Archive として最低限の情報を書き出しておく。
-                using (Writer writer = new Writer(m_stream, true))
+        /// <summary>
+        /// アーカイブ内の指定の名前のエントリを取得します。
+        /// </summary>
+        /// <param name="entryName">取得するエントリの名前。</param>
+        /// <returns>アーカイブ内の指定された名前を持つエントリ。エントリがアーカイブ内に存在しない場合は null。</returns>
+        /// <exception cref="ArgumentException">entryName が空文字列です。</exception>
+        /// <exception cref="ArgumentNullException">entryName が null です。</exception>
+        /// <exception cref="ObjectDisposedException">破棄された Archive にアクセスしようとしました。</exception>
+        public ArchiveEntry GetEntry(string entryName)
+        {
+            if (m_isDisposed)
+            {
+                throw new ObjectDisposedException("Archive");
+            }
+            if (entryName == null)
+            {
+                throw new ArgumentNullException("entryName");
+            }
+            if (entryName == "")
+            {
+                throw new ArgumentException("entryName が空文字列です。", "entryName");
+            }
+
+            foreach (ArchiveEntry entry in m_entries)
+            {
+                if (entry.Name == entryName)
                 {
-                    writer.WriteBytes(MAGIC_NUMBER);
-                    writer.WriteUInt32(CURRENT_VERSION);
-                    writer.WriteUInt32(0);  // ファイル数
+                    return entry;
                 }
             }
+
+            return null;
         }
 
         /// <summary>
         /// 指定した名前を持つ空のエントリをアーカイブに作成します。
         /// </summary>
-        /// <param name="name">作成されるエントリの名前。ASCII 文字だけで構成されている必要があります。</param>
+        /// <param name="entryName">作成されるエントリの名前。ASCII 文字だけで構成されている必要があります。</param>
         /// <returns>作成されたエントリ。</returns>
-        /// <exception cref="ArgumentException">name が空文字列です。もしくは name に ASCII 以外の文字が含まれています。</exception>
-        /// <exception cref="ArgumentNullException">name が null です。</exception>
+        /// <exception cref="ArgumentException">entryName が空文字列です。もしくは entryName に ASCII 以外の文字が含まれています。</exception>
+        /// <exception cref="ArgumentNullException">entryName が null です。</exception>
         /// <exception cref="InvalidOperationException">
-        /// 現在のモードではエントリを作成できません。
+        /// 現在のアーカイブモードはエントリの作成をサポートしていません。
         /// もしくは
         /// 指定された名前と同名のエントリが既にアーカイブに存在します。
         /// </exception>
-        public ArchiveEntry CreateEntry(string name)
+        /// <exception cref="ObjectDisposedException">破棄された Archive にアクセスしようとしました。</exception>
+        public ArchiveEntry CreateEntry(string entryName)
         {
+            if (m_isDisposed)
+            {
+                throw new ObjectDisposedException("Archive");
+            }
             if (m_mode == ArchiveMode.Read)
             {
                 throw new InvalidOperationException("現在のモードではエントリを作成できません。");
             }
-            if (name == null)
+            if (entryName == null)
             {
-                throw new ArgumentNullException("name");
+                throw new ArgumentNullException("entryName");
             }
-            if (name == "")
+            if (entryName == "")
             {
-                throw new ArgumentException("name が空文字列です。", "name");
+                throw new ArgumentException("entryName が空文字列です。", "entryName");
             }
 
-            // name の文字コードをチェック
+            // entryName の文字コードをチェック
             try
             {
-                Encoding.ASCII.GetBytes(name);
+                Misc.ThrowIfContainsNoneASCIICharacters(entryName);
             }
             catch (EncoderFallbackException e)
             {
-                throw new ArgumentException("name に ASCII 以外の文字が含まれています。", "name", e);
+                throw new ArgumentException("entryName に ASCII 以外の文字が含まれています。", "entryName", e);
             }
 
             // 同名のエントリが既に無いかを確認
             foreach (var entry in m_entries)
             {
-                if (entry.Name == name)
+                if (entry.Name == entryName)
                 {
-                    throw new InvalidOperationException(string.Format("\"{0}\" という名前のエントリは既にアーカイブに存在します。", name));
+                    throw new InvalidOperationException(string.Format("\"{0}\" という名前のエントリは既にアーカイブに存在します。", entryName));
                 }
             }
 
-            ArchiveEntry newEntry = new ArchiveEntry(this, name, null, DefaultAlignment);
+            ArchiveEntry newEntry = new ArchiveEntry(this, entryName, null, DefaultAlignment, m_mode == ArchiveMode.Read);
             m_entries.Add(newEntry);
             return newEntry;
+        }
+
+        // entry をこのアーカイブの管理下から外す。
+        // ArchiveEntry.Delete から呼ばれる想定。
+        internal void RemoveEntryFromCollection(ArchiveEntry entry)
+        {
+            Debug.Assert(m_entries.Contains(entry));
+            m_entries.Remove(entry);
         }
 
         // アーカイブの内容をストリームに書き出す。
@@ -259,6 +307,7 @@ namespace SimpleArchive
                 return;
             }
 
+            long archiveSize = 0;
             using (Writer writer = new Writer(m_stream, true))
             {
                 writer.Seek(0, SeekOrigin.Begin);
@@ -316,6 +365,14 @@ namespace SimpleArchive
                         prevFileEndAddress = writer.Position;
                     }
                 }
+
+                archiveSize = prevFileEndAddress;
+            }
+
+            if (archiveSize < m_stream.Length)
+            {
+                // アーカイブが以前より小さくなったので、ストリームを切り詰める
+                m_stream.SetLength(archiveSize);
             }
         }
 
@@ -342,7 +399,7 @@ namespace SimpleArchive
             // ファイル本体
             byte[] data = reader.ReadBytes(fileBodyOffset, (int)fileSize);
 
-            return new ArchiveEntry(this, fileName, data, alignment);
+            return new ArchiveEntry(this, fileName, data, alignment, m_mode == ArchiveMode.Read);
         }
 
         // address を二のべき乗数の倍数に切り上げる。
@@ -385,11 +442,11 @@ namespace SimpleArchive
         private UInt32 m_defaultAlignment;
 
 #region IDisposable Support
-        private bool disposedValue = false;
+        private bool m_isDisposed = false;
 
         protected virtual void Dispose(bool disposing)
         {
-            if (!disposedValue)
+            if (!m_isDisposed)
             {
                 Flush();
                 if (disposing)
@@ -398,10 +455,15 @@ namespace SimpleArchive
                     {
                         m_stream.Close();
                     }
+
+                    foreach (ArchiveEntry entry in m_entries)
+                    {
+                        entry.NotifyArchiveDisposing();
+                    }
                 }
 
                 m_stream = null;
-                disposedValue = true;
+                m_isDisposed = true;
             }
         }
 

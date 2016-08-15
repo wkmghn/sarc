@@ -4,8 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.IO;
+using SimpleArchive;
 
-namespace SimpleArchive
+namespace sarc
 {
     class Program
     {
@@ -55,11 +56,27 @@ namespace SimpleArchive
             //     指定しなかった場合はソートされない。
             //     /Sort は単体のコマンドとしても利用できる。
 
-            using (Stream stream = new FileStream("test.arc", FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
-            using (Archive arc = new Archive(stream, ArchiveMode.Update))
+            // 更新
+            //using (Stream stream = new FileStream("test.arc", FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+            //using (Archive arc = new Archive(stream, ArchiveMode.Update))
+            // 新規作成
+            using (Stream stream = new FileStream("test.arc", FileMode.Create, FileAccess.ReadWrite, FileShare.Read))
+            using (Archive arc = new Archive(stream, ArchiveMode.Create))
             {
+#if false
                 //arc.CreateEntry("test1");
                 //arc.CreateEntry("test2");
+                ArchiveEntry entry = arc.GetEntry("test3");
+                using (Stream s = entry.Open())
+                {
+                    s.SetLength(0);
+                    s.Position = 0;
+                }
+                using (TextWriter writer = new StreamWriter(entry.Open(), Encoding.ASCII))
+                {
+                    writer.WriteLine("abcde");
+                }
+#endif
             }
         }
     }
