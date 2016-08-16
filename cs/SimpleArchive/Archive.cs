@@ -137,7 +137,7 @@ namespace SimpleArchive
             {
                 throw new ArgumentException("シークをサポートするストリームが必要です。", "stream");
             }
-            if (m_mode == ArchiveMode.Create || m_mode == ArchiveMode.Update)
+            if (mode == ArchiveMode.Create || mode == ArchiveMode.Update)
             {
                 if (!stream.CanWrite)
                 {

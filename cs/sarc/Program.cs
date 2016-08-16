@@ -17,73 +17,373 @@ namespace sarc
 {
     class Program
     {
-        static void Main(string[] args)
+        static int Main(string[] args)
         {
-            // ◆コマンド
-            // /Create [Options] <Archive> <Files... and/or Directories...>
-            //     アーカイブを新規に作成する。
-            //     ディレクトリを指定した場合は、その中の全ファイルをアーカイブに含める。
-            //     既に Archive が存在する場合は失敗を報告する。(Archive に変更は加えない)
-            //     ファイルの列挙中に同名のファイルを見つけた場合は処理に失敗する。
-            //     /C でも同じ。
-            // /Append [Options] <Archive> <File>
-            //     Archive の末尾に File を追加する。
-            //     同名のファイルが Archive 内に既にある場合、アーカイブから既存のファイルを削除したあとに File を Archive の末尾に追加する。
-            //     /A でも同じ。
-            // /Delete [Options] <Archive> <File>
-            //     Archive から File を削除する。
-            //     File が Archive に存在しない場合は失敗を報告する。
-            //     /D でも同じ。
-            // /Extract [Options] <Archive> [Files...]
-            //     Archive の内容を OutputDirectory に抽出する。
-            //     /Directory を指定しなかった場合はカレントディレクトリに抽出する。
-            //     Files を指定しなかった場合はすべてのファイルを抽出する。
-            //     /X でも同じ。
-            // /List <Archive>
-            //     アーカイブに含まれるファイルの一覧を表示する。
-            //     /L でも同じ。
-            // /Sort CRITERIA ORDER <Archive>
-            //     Archive の内容を CRITERIA ORDER に従ってソートする。
-            //     /Sort コマンドはほかのコマンドのオプションとしても利用できる。
-
-            // ◆オプション
-            // /KeepOldFiles
-            //     /Extract のオプション。
-            //     抽出したファイルと同名のファイルが既に存在する場合、既存のファイルを上書きせずにそのまま残す。
-            // /Directory DIR
-            //     /Extract のオプション。
-            //     抽出先のディレクトリを指定する。
-            //     DIR が存在しない場合は作成する。
-            //     DIR が既存のファイルを指す場合は処理に失敗する。
-            // /Sort CRITERIA ORDER
-            //     /Create /Append /Delete のオプション。
-            //     アーカイブ内のファイルをソートする。
-            //     CRITERIA: FileName
-            //     ORDER   : Ascending, Descending
-            //     指定しなかった場合はソートされない。
-            //     /Sort は単体のコマンドとしても利用できる。
-
-            // 更新
-            //using (Stream stream = new FileStream("test.arc", FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
-            //using (Archive arc = new Archive(stream, ArchiveMode.Update))
-            // 新規作成
-            using (Stream stream = new FileStream("test.arc", FileMode.Create, FileAccess.ReadWrite, FileShare.Read))
-            using (Archive arc = new Archive(stream, ArchiveMode.Create))
+            // 引数をパース
+            Options options;
+            try
             {
-#if false
-                //arc.CreateEntry("test1");
-                //arc.CreateEntry("test2");
-                ArchiveEntry entry = arc.GetEntry("test3");
-                using (Stream s = entry.Open())
+                options = new Options(args);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Usage:");
+                Console.WriteLine("    sarc /Create <Archive> <Files...>");
+                Console.WriteLine("    sarc /Append <Archive> <Files...>");
+                Console.WriteLine("    sarc /Update <Archive> <Files...>");
+                Console.WriteLine("    sarc /Delete <Archive> <Entries...>");
+                Console.WriteLine("    sarc /Extract [/Directory DIR] [/OverwriteFiles] <Archive> <Entries...>");
+                Console.WriteLine("    sarc /List <Archive>");
+                Console.WriteLine();
+                Console.WriteLine("Error: " + e.Message);
+                return 1;
+            }
+
+            // コマンドを実行
+            try
+            {
+                switch (options.Command)
                 {
-                    s.SetLength(0);
-                    s.Position = 0;
+                    case MainCommand.Create:
+                        DoCreate(options);
+                        break;
+                    case MainCommand.Append:
+                        DoAppend(options);
+                        break;
+                    case MainCommand.Update:
+                        DoUpdate(options);
+                        break;
+                    case MainCommand.Delete:
+                        DoDelete(options);
+                        break;
+                    case MainCommand.Extract:
+                        DoExtract(options);
+                        break;
+                    case MainCommand.List:
+                        DoList(options);
+                        break;
                 }
-                using (TextWriter writer = new StreamWriter(entry.Open(), Encoding.ASCII))
+            }
+            catch(Exception e)
+            {
+                Console.WriteLine("Error: " + e.Message);
+                return 1;
+            }
+
+            return 0;
+        }
+
+        static void DoCreate(Options options)
+        {
+            ValidateArchivePath(options.ArchivePath, false, true);
+
+            // ファイルが存在するかチェック
+            foreach (string path in options.ContentPaths)
+            {
+                if (Directory.Exists(path))
                 {
-                    writer.WriteLine("abcde");
+                    throw new IOException(string.Format("指定されたパス {0} がファイルではなくディレクトリを指しています。", path));
                 }
-#endif
+
+                if (!File.Exists(path))
+                {
+                    throw new FileNotFoundException(string.Format("指定されたファイル {0} が見つかりません。", path), path);
+                }
+            }
+
+            // ファイル名に重複がないかチェック
+
+            {
+                HashSet<string> entryNames = new HashSet<string>();
+                foreach (string path in options.ContentPaths)
+                {
+                    string entryName = GetEntryNameFromFilePath(path);
+                    if (!entryNames.Add(entryName))
+                    {
+                        throw new IOException(string.Format("ファイル名 {0} が複数指定されています。", entryName));
+                    }
+                }
+            }
+
+            bool fileCreationSucceeded = false;
+            try
+            {
+                // アーカイブファイルを作成
+                FileStream archiveStream = new FileStream(options.ArchivePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
+                fileCreationSucceeded = true;
+                using (archiveStream)
+                using (Archive archive = new Archive(archiveStream, ArchiveMode.Create))
+                {
+                    // ファイルをアーカイブに追加していく
+                    foreach (string path in options.ContentPaths)
+                    {
+                        AddFileToArchive(path, archive);
+                    }
+                }
+            }
+            catch(Exception e)
+            {
+                // 中途半端に作ってしまったアーカイブファイルを削除する
+                if (fileCreationSucceeded)
+                {
+                    File.Delete(options.ArchivePath);
+                }
+
+                throw new Exception("アーカイブの作成に失敗しました。", e);
+            }
+        }
+
+        static void DoAppend(Options options)
+        {
+            ValidateArchivePath(options.ArchivePath, true, false);
+
+            // ファイルが存在するかチェック
+            foreach (string path in options.ContentPaths)
+            {
+                if (Directory.Exists(path))
+                {
+                    throw new IOException(string.Format("指定されたパス {0} がファイルではなくディレクトリを指しています。", path));
+                }
+
+                if (!File.Exists(path))
+                {
+                    throw new FileNotFoundException(string.Format("指定されたファイル {0} が見つかりません。", path), path);
+                }
+            }
+
+            // ファイル名に重複がないかチェック
+            HashSet<string> entryNames = new HashSet<string>();
+            foreach (string path in options.ContentPaths)
+            {
+                string entryName = GetEntryNameFromFilePath(path);
+                if (!entryNames.Add(entryName))
+                {
+                    throw new IOException(string.Format("ファイル名 {0} が複数指定されています。", entryName));
+                }
+            }
+
+            using (FileStream archiveStream = new FileStream(options.ArchivePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+            using (Archive archive = new Archive(archiveStream, ArchiveMode.Update))
+            {
+                // アーカイブ内の既存のファイルと、追加するファイル間で重複がないかチェック
+                foreach (ArchiveEntry entry in archive.Entries)
+                {
+                    if (!entryNames.Add(entry.Name))
+                    {
+                        throw new IOException(string.Format("{0} という名前のファイルは既にアーカイブ内に存在します。", entry.Name));
+                    }
+                }
+
+                // ファイルをアーカイブに追加する
+                foreach (string path in options.ContentPaths)
+                {
+                    AddFileToArchive(path, archive);
+                }
+            }
+        }
+
+        static void DoUpdate(Options options)
+        {
+            ValidateArchivePath(options.ArchivePath, true, false);
+
+            // ファイルが存在するかチェック
+            foreach (string path in options.ContentPaths)
+            {
+                if (Directory.Exists(path))
+                {
+                    throw new IOException(string.Format("指定されたパス {0} がファイルではなくディレクトリを指しています。", path));
+                }
+
+                if (!File.Exists(path))
+                {
+                    throw new FileNotFoundException(string.Format("指定されたファイル {0} が見つかりません。", path), path);
+                }
+            }
+
+            // ファイル名に重複がないかチェック
+            HashSet<string> entryNames = new HashSet<string>();
+            foreach (string path in options.ContentPaths)
+            {
+                string entryName = GetEntryNameFromFilePath(path);
+                if (!entryNames.Add(entryName))
+                {
+                    throw new IOException(string.Format("ファイル名 {0} が複数指定されています。", entryName));
+                }
+            }
+
+            using (FileStream archiveStream = new FileStream(options.ArchivePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+            using (Archive archive = new Archive(archiveStream, ArchiveMode.Update))
+            {
+                // ファイルを更新or追加する
+                foreach (string path in options.ContentPaths)
+                {
+                    string entryName = GetEntryNameFromFilePath(path);
+                    // エントリを取得する。無ければ作る。
+                    ArchiveEntry entry = archive.GetEntry(entryName);
+                    if (entry == null)
+                    {
+                        entry = archive.CreateEntry(entryName);
+                    }
+
+                    // エントリの内容を更新。
+                    using (Stream fileStream = new FileStream(path, FileMode.Open, FileAccess.Read))
+                    using (Stream entryStream = entry.Open())
+                    {
+                        entryStream.SetLength(0);
+                        entryStream.Position = 0;
+                        fileStream.CopyTo(entryStream);
+                    }
+                }
+            }
+        }
+
+        static void DoDelete(Options options)
+        {
+            ValidateArchivePath(options.ArchivePath, true, false);
+
+            if (options.EntryNames.Count == 0)
+            {
+                throw new IOException("削除するファイルが指定されていません。");
+            }
+
+            using (FileStream archiveStream = new FileStream(options.ArchivePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+            using (Archive archive = new Archive(archiveStream, ArchiveMode.Update))
+            {
+                foreach (string entryName in options.EntryNames)
+                {
+                    ArchiveEntry entry = archive.GetEntry(entryName);
+                    if (entry == null)
+                    {
+                        Console.WriteLine("Skip: " + entryName + " (File doesn't exist in the Archive.");
+                        continue;
+                    }
+                    entry.Delete();
+                }
+            }
+        }
+
+        static void DoExtract(Options options)
+        {
+            ValidateArchivePath(options.ArchivePath, true, false);
+
+            int extractedFiles = 0;
+
+            Action<ArchiveEntry> extractEntry = delegate (ArchiveEntry entry)
+            {
+                string path = (options.Directory != null) ? Path.Combine(options.Directory, entry.Name) : entry.Name;
+                if (Directory.Exists(path))
+                {
+                    throw new IOException(string.Format("ファイル名 {0} と同じ名前のディレクトリが出力先に存在します。", entry.Name));
+                }
+                if (File.Exists(path) && !options.OverwriteFiles)
+                {
+                    Console.WriteLine("Skip: " + entry.Name + " (File exists in output directory.)");
+                    return;
+                }
+                using (Stream entryStream = entry.Open())
+                using (Stream fileStream = new FileStream(path, FileMode.Create, FileAccess.Write))
+                {
+                    entryStream.Position = 0;
+                    entryStream.CopyTo(fileStream);
+                    ++extractedFiles;
+                }
+            };
+
+            using (FileStream archiveStream = new FileStream(options.ArchivePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (Archive archive = new Archive(archiveStream, ArchiveMode.Read))
+            {
+                // 出力先ディレクトリがないなら作る
+                if (options.Directory != null && !Directory.Exists(options.Directory))
+                {
+                    Directory.CreateDirectory(options.Directory);
+                }
+
+                if (options.EntryNames.Count == 0)
+                {
+                    // 全ファイルを抽出
+                    foreach (ArchiveEntry entry in archive.Entries)
+                    {
+                        extractEntry(entry);
+                    }
+                }
+                else
+                {
+                    // 指定のファイルだけを抽出
+                    foreach (string entryName in options.EntryNames)
+                    {
+                        ArchiveEntry entry = archive.GetEntry(entryName);
+                        if (entry == null)
+                        {
+                            Console.WriteLine("Skip: " + entryName + " (File doesn't exist in the Archive.)");
+                            continue;
+                        }
+                        extractEntry(entry);
+                    }
+                }
+            }
+
+            Console.WriteLine("Extracted {0} file(s).", extractedFiles);
+        }
+
+        static void DoList(Options options)
+        {
+            ValidateArchivePath(options.ArchivePath, true, false);
+
+            using (FileStream archiveStream = new FileStream(options.ArchivePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (Archive archive = new Archive(archiveStream, ArchiveMode.Read))
+            {
+                Console.WriteLine("{0,-10} {1,-5} Name", "Size", "Align");
+                foreach (ArchiveEntry entry in archive.Entries)
+                {
+                    Console.WriteLine("{0,10} {1,5} {2}", entry.Length, entry.Alignment, entry.Name);
+                }
+                Console.WriteLine("{0} File(s) in {1}.", archive.Entries.Count, options.ArchivePath);
+            }
+        }
+
+        // アーカイブをチェックする。
+        static void ValidateArchivePath(string archivePath, bool needExists = false, bool needNotExists = false)
+        {
+            if (string.IsNullOrEmpty(archivePath))
+            {
+                throw new ArgumentException("アーカイブパスが指定されていません。");
+            }
+
+            if (needExists)
+            {
+                if (!File.Exists(archivePath))
+                {
+                    throw new FileNotFoundException("アーカイブファイルが存在しません。", archivePath);
+                }
+            }
+
+            if (needNotExists)
+            {
+                if (File.Exists(archivePath))
+                {
+                    throw new IOException("アーカイブファイルが既に存在しています。");
+                }
+                if (Directory.Exists(archivePath))
+                {
+                    throw new IOException("アーカイブファイルと同名のディレクトリが既に存在しています。");
+                }
+            }
+        }
+
+        static string GetEntryNameFromFilePath(string filePath)
+        {
+            return Path.GetFileName(filePath);
+        }
+
+        // アーカイブにファイルを追加する。同名のファイルがアーカイブ内に無いことを想定している。
+        static void AddFileToArchive(string filePath, Archive archive)
+        {
+            string entryName = GetEntryNameFromFilePath(filePath);
+            ArchiveEntry entry = archive.CreateEntry(entryName);
+            using (Stream entryStream = entry.Open())
+            using (Stream fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+            {
+                fileStream.CopyTo(entryStream);
             }
         }
     }
