@@ -17,6 +17,7 @@ namespace sarc
 {
     enum MainCommand
     {
+        Help,
         Create,
         Append,
         Update,
@@ -119,11 +120,13 @@ namespace sarc
             context.Next();
 
             // 共通のオプションをパース
-            ParseOptions(context);
+            ParseOptions(context, m_command);
 
             // コマンドごとに処理を分ける
             switch (m_command)
             {
+                case MainCommand.Help:
+                    break;
                 case MainCommand.Create:
                     ParseToCreate(context);
                     break;
@@ -149,6 +152,9 @@ namespace sarc
         {
             switch (s)
             {
+                case "/Help":
+                case "/?":
+                    return MainCommand.Help;
                 case "/Create":
                 case "/C":
                     return MainCommand.Create;
@@ -173,8 +179,13 @@ namespace sarc
         }
 
         // コマンド直後に指定されるオプション類をパースする
-        private void ParseOptions(Context context)
+        private void ParseOptions(Context context, MainCommand currentCommand)
         {
+            if (currentCommand == MainCommand.Help)
+            {
+                return;
+            }
+
             while (context.CurrentArg.StartsWith("/"))
             {
                 switch (context.CurrentArg)

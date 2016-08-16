@@ -27,13 +27,7 @@ namespace sarc
             }
             catch (Exception e)
             {
-                Console.WriteLine("Usage:");
-                Console.WriteLine("    sarc /Create <Archive> <Files...>");
-                Console.WriteLine("    sarc /Append <Archive> <Files...>");
-                Console.WriteLine("    sarc /Update <Archive> <Files...>");
-                Console.WriteLine("    sarc /Delete <Archive> <Entries...>");
-                Console.WriteLine("    sarc /Extract [/Directory DIR] [/OverwriteFiles] <Archive> <Entries...>");
-                Console.WriteLine("    sarc /List <Archive>");
+                PrintUsage();
                 Console.WriteLine();
                 Console.WriteLine("Error: " + e.Message);
                 return 1;
@@ -44,6 +38,9 @@ namespace sarc
             {
                 switch (options.Command)
                 {
+                    case MainCommand.Help:
+                        PrintUsage();
+                        break;
                     case MainCommand.Create:
                         DoCreate(options);
                         break;
@@ -71,6 +68,32 @@ namespace sarc
             }
 
             return 0;
+        }
+
+        static void PrintUsage()
+        {
+            Console.WriteLine(@"Usage:
+    sarc /?
+        Show usage.
+
+    sarc /Create <Archive> <Files...>
+        Create a new archive.
+
+    sarc /Append <Archive> <Files...>
+        Append file(s) to the Archive.
+
+    sarc /Update <Archive> <Files...>
+        Update or append file(s) to the Archive.
+
+    sarc /Delete <Archive> <Entries...>
+        Delete entry(s) from the Archive.
+
+    sarc /Extract [/Directory DIR] [/OverwriteFiles] <Archive> <Entries...>
+        Extrace entry(s) from the Archive.
+
+    sarc /List <Archive>
+        Show entry(s) in the Archive."
+);
         }
 
         static void DoCreate(Options options)
